@@ -1,0 +1,14 @@
+.git/
+.gitignore
+
+.env
+.env.example
+.tripgo/
+environment.toml
+
+bin/
+*.log
+**/*_test.go
+
+.idea/
+.DS_Store
