@@ -7,3 +7,7 @@ bin/
 
 .DS_Store
 .idea/
+
+# Покрытие
+coverage.out
+coverage.core.out
