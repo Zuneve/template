@@ -127,6 +127,78 @@ func (mr *MockfinishTripHandlerMockRecorder) Handle(w, r, tripID any) *gomock.Ca
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Handle", reflect.TypeOf((*MockfinishTripHandler)(nil).Handle), w, r, tripID)
 }
 
+// MocksavePositionHandler is a mock of savePositionHandler interface.
+type MocksavePositionHandler struct {
+	ctrl     *gomock.Controller
+	recorder *MocksavePositionHandlerMockRecorder
+	isgomock struct{}
+}
+
+// MocksavePositionHandlerMockRecorder is the mock recorder for MocksavePositionHandler.
+type MocksavePositionHandlerMockRecorder struct {
+	mock *MocksavePositionHandler
+}
+
+// NewMocksavePositionHandler creates a new mock instance.
+func NewMocksavePositionHandler(ctrl *gomock.Controller) *MocksavePositionHandler {
+	mock := &MocksavePositionHandler{ctrl: ctrl}
+	mock.recorder = &MocksavePositionHandlerMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MocksavePositionHandler) EXPECT() *MocksavePositionHandlerMockRecorder {
+	return m.recorder
+}
+
+// Handle mocks base method.
+func (m *MocksavePositionHandler) Handle(w http.ResponseWriter, r *http.Request, tripID api.TripId) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "Handle", w, r, tripID)
+}
+
+// Handle indicates an expected call of Handle.
+func (mr *MocksavePositionHandlerMockRecorder) Handle(w, r, tripID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Handle", reflect.TypeOf((*MocksavePositionHandler)(nil).Handle), w, r, tripID)
+}
+
+// MocklistPositionsHandler is a mock of listPositionsHandler interface.
+type MocklistPositionsHandler struct {
+	ctrl     *gomock.Controller
+	recorder *MocklistPositionsHandlerMockRecorder
+	isgomock struct{}
+}
+
+// MocklistPositionsHandlerMockRecorder is the mock recorder for MocklistPositionsHandler.
+type MocklistPositionsHandlerMockRecorder struct {
+	mock *MocklistPositionsHandler
+}
+
+// NewMocklistPositionsHandler creates a new mock instance.
+func NewMocklistPositionsHandler(ctrl *gomock.Controller) *MocklistPositionsHandler {
+	mock := &MocklistPositionsHandler{ctrl: ctrl}
+	mock.recorder = &MocklistPositionsHandlerMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MocklistPositionsHandler) EXPECT() *MocklistPositionsHandlerMockRecorder {
+	return m.recorder
+}
+
+// Handle mocks base method.
+func (m *MocklistPositionsHandler) Handle(w http.ResponseWriter, r *http.Request, tripID api.TripId) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "Handle", w, r, tripID)
+}
+
+// Handle indicates an expected call of Handle.
+func (mr *MocklistPositionsHandlerMockRecorder) Handle(w, r, tripID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Handle", reflect.TypeOf((*MocklistPositionsHandler)(nil).Handle), w, r, tripID)
+}
+
 // MockhealthHandler is a mock of healthHandler interface.
 type MockhealthHandler struct {
 	ctrl     *gomock.Controller

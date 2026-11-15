@@ -22,6 +22,14 @@ type (
 		Handle(w http.ResponseWriter, r *http.Request, tripID api.TripId)
 	}
 
+	savePositionHandler interface {
+		Handle(w http.ResponseWriter, r *http.Request, tripID api.TripId)
+	}
+
+	listPositionsHandler interface {
+		Handle(w http.ResponseWriter, r *http.Request, tripID api.TripId)
+	}
+
 	healthHandler interface {
 		Live(w http.ResponseWriter, r *http.Request)
 		Ready(w http.ResponseWriter, r *http.Request)

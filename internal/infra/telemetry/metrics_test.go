@@ -102,6 +102,72 @@ func TestMetrics_TripCounters(t *testing.T) {
 	require.Equal(t, int64(1), metrics["tripgo.trips.completed"].Data.(metricdata.Sum[int64]).DataPoints[0].Value)
 }
 
+func TestMetrics_PositionsSaved(t *testing.T) {
+	m, reader := newMetrics(t)
+	ctx := context.Background()
+
+	m.PositionSaved(ctx)
+	m.PositionSaved(ctx)
+
+	sum := collect(t, reader)["tripgo.positions.saved"].Data.(metricdata.Sum[int64])
+	require.Equal(t, int64(2), sum.DataPoints[0].Value)
+}
+
+func TestMetrics_StaleChecks(t *testing.T) {
+	m, reader := newMetrics(t)
+	ctx := context.Background()
+
+	m.StaleCheck(ctx, "queued")
+	m.StaleCheck(ctx, "queued")
+	m.StaleCheck(ctx, "duplicate")
+	m.StaleCheck(ctx, "dropped")
+
+	got := map[string]int64{}
+	for _, dp := range collect(t, reader)["tripgo.stale_checks"].Data.(metricdata.Sum[int64]).DataPoints {
+		got[attrs(dp.Attributes)["result"]] = dp.Value
+	}
+	require.Equal(t, map[string]int64{"queued": 2, "duplicate": 1, "dropped": 1}, got)
+}
+
+func TestMetrics_PositionRequests(t *testing.T) {
+	m, reader := newMetrics(t)
+	ctx := context.Background()
+
+	m.PositionRequestFinished(ctx, "success", 50*time.Millisecond)
+	m.PositionRequestFinished(ctx, "error", 2*time.Second)
+	m.PositionRequestDropped(ctx)
+	m.PositionRequestDropped(ctx)
+
+	metrics := collect(t, reader)
+	counts := map[string]int64{}
+	for _, dp := range metrics["tripgo.position_requests"].Data.(metricdata.Sum[int64]).DataPoints {
+		counts[attrs(dp.Attributes)["result"]] = dp.Value
+	}
+	require.Equal(t, map[string]int64{"success": 1, "error": 1, "dropped": 2}, counts)
+
+	// Only calls that reached the Push Service have a duration; a drop does not.
+	durations := map[string]uint64{}
+	for _, dp := range metrics["tripgo.position_requests.duration"].Data.(metricdata.Histogram[float64]).DataPoints {
+		durations[attrs(dp.Attributes)["result"]] = dp.Count
+	}
+	require.Equal(t, map[string]uint64{"success": 1, "error": 1}, durations)
+}
+
+func TestMetrics_PositionRequestGauges(t *testing.T) {
+	m, reader := newMetrics(t)
+	queue, active := int64(7), int64(2)
+	require.NoError(t, m.ObservePositionRequests(func() int64 { return queue }, func() int64 { return active }))
+
+	metrics := collect(t, reader)
+	require.Equal(t, int64(7), metrics["tripgo.position_requests.queue.size"].Data.(metricdata.Gauge[int64]).DataPoints[0].Value)
+	require.Equal(t, int64(2), metrics["tripgo.position_requests.workers.active"].Data.(metricdata.Gauge[int64]).DataPoints[0].Value)
+
+	queue, active = 0, 4
+	metrics = collect(t, reader)
+	require.Equal(t, int64(0), metrics["tripgo.position_requests.queue.size"].Data.(metricdata.Gauge[int64]).DataPoints[0].Value)
+	require.Equal(t, int64(4), metrics["tripgo.position_requests.workers.active"].Data.(metricdata.Gauge[int64]).DataPoints[0].Value)
+}
+
 func TestMetrics_ActiveTripsGauge(t *testing.T) {
 	t.Run("reports the count at collection time", func(t *testing.T) {
 		m, reader := newMetrics(t)

@@ -30,6 +30,11 @@ type Metrics struct {
 	activeRequests metric.Int64UpDownCounter
 	tripsCreated   metric.Int64Counter
 	tripsCompleted metric.Int64Counter
+	positionsSaved metric.Int64Counter
+
+	staleChecks      metric.Int64Counter
+	positionRequests metric.Int64Counter
+	requestDuration  metric.Float64Histogram
 }
 
 func NewMetrics(provider metric.MeterProvider) (*Metrics, error) {
@@ -68,12 +73,50 @@ func NewMetrics(provider metric.MeterProvider) (*Metrics, error) {
 		return nil, fmt.Errorf("create tripgo.trips.completed: %w", err)
 	}
 
+	positionsSaved, err := meter.Int64Counter("tripgo.positions.saved",
+		metric.WithUnit("{position}"),
+		metric.WithDescription("Trip positions saved."),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("create tripgo.positions.saved: %w", err)
+	}
+
+	staleChecks, err := meter.Int64Counter("tripgo.stale_checks",
+		metric.WithUnit("{trip}"),
+		metric.WithDescription("What the scanner did with a stale trip on a tick: queued, duplicate or dropped."),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("create tripgo.stale_checks: %w", err)
+	}
+
+	positionRequests, err := meter.Int64Counter("tripgo.position_requests",
+		metric.WithUnit("{request}"),
+		metric.WithDescription("How an attempt to request a position ended: success, error or dropped."),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("create tripgo.position_requests: %w", err)
+	}
+
+	requestDuration, err := meter.Float64Histogram("tripgo.position_requests.duration",
+		metric.WithUnit("s"),
+		metric.WithDescription("Duration of the Push Service call that requests a position."),
+		metric.WithExplicitBucketBoundaries(DurationBuckets...),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("create tripgo.position_requests.duration: %w", err)
+	}
+
 	return &Metrics{
 		meter:          meter,
 		requestTime:    requestTime,
 		activeRequests: activeRequests,
 		tripsCreated:   tripsCreated,
 		tripsCompleted: tripsCompleted,
+		positionsSaved: positionsSaved,
+
+		staleChecks:      staleChecks,
+		positionRequests: positionRequests,
+		requestDuration:  requestDuration,
 	}, nil
 }
 
@@ -97,6 +140,56 @@ func (m *Metrics) TripCreated(ctx context.Context) {
 
 func (m *Metrics) TripCompleted(ctx context.Context) {
 	m.tripsCompleted.Add(ctx, 1)
+}
+
+func (m *Metrics) PositionSaved(ctx context.Context) {
+	m.positionsSaved.Add(ctx, 1)
+}
+
+// StaleCheck counts what the scanner did with one stale trip: result is
+// "queued", "duplicate" or "dropped".
+func (m *Metrics) StaleCheck(ctx context.Context, result string) {
+	m.staleChecks.Add(ctx, 1, metric.WithAttributes(attribute.String("result", result)))
+}
+
+// PositionRequestDropped counts a task thrown away because the queue was full.
+func (m *Metrics) PositionRequestDropped(ctx context.Context) {
+	m.positionRequests.Add(ctx, 1, metric.WithAttributes(attribute.String("result", "dropped")))
+}
+
+// PositionRequestFinished records the end of a Push Service call: result is
+// "success" or "error". Both the counter and the duration histogram get it.
+func (m *Metrics) PositionRequestFinished(ctx context.Context, result string, duration time.Duration) {
+	attrs := metric.WithAttributes(attribute.String("result", result))
+	m.positionRequests.Add(ctx, 1, attrs)
+	m.requestDuration.Record(ctx, duration.Seconds(), attrs)
+}
+
+// ObservePositionRequests registers the queue and worker gauges. Both are read
+// at collection time from the component that owns the number.
+func (m *Metrics) ObservePositionRequests(queueSize, workersActive func() int64) error {
+	if _, err := m.meter.Int64ObservableGauge("tripgo.position_requests.queue.size",
+		metric.WithUnit("{task}"),
+		metric.WithDescription("Tasks currently waiting in the position request queue."),
+		metric.WithInt64Callback(func(_ context.Context, o metric.Int64Observer) error {
+			o.Observe(queueSize())
+			return nil
+		}),
+	); err != nil {
+		return fmt.Errorf("create tripgo.position_requests.queue.size: %w", err)
+	}
+
+	if _, err := m.meter.Int64ObservableGauge("tripgo.position_requests.workers.active",
+		metric.WithUnit("{worker}"),
+		metric.WithDescription("Workers currently busy with a position request."),
+		metric.WithInt64Callback(func(_ context.Context, o metric.Int64Observer) error {
+			o.Observe(workersActive())
+			return nil
+		}),
+	); err != nil {
+		return fmt.Errorf("create tripgo.position_requests.workers.active: %w", err)
+	}
+	return nil
 }
 
 // ObserveActiveTrips registers the tripgo.trips.active gauge. The value is

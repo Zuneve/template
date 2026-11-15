@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"os"
 	"strconv"
 	"time"
@@ -22,9 +23,26 @@ type DatabaseConfig struct {
 	QueryTimeout    time.Duration
 }
 
+// PositionsConfig drives the stale-trip polling: how often the scanner looks,
+// how long a trip may stay silent, and the size of the queue and worker pool
+// between the scanner and the Push Service.
+type PositionsConfig struct {
+	CheckInterval time.Duration
+	StaleAfter    time.Duration
+	Workers       int
+	QueueSize     int
+}
+
+type PushConfig struct {
+	URL            string
+	RequestTimeout time.Duration
+}
+
 type Config struct {
 	HTTP            HTTPConfig
 	Database        DatabaseConfig
+	Positions       PositionsConfig
+	Push            PushConfig
 	LogLevel        slog.Level
 	ShutdownTimeout time.Duration
 }
@@ -47,6 +65,16 @@ func Load() (Config, error) {
 			ConnectTimeout:  l.duration("DATABASE_CONNECT_TIMEOUT"),
 			QueryTimeout:    l.duration("DATABASE_QUERY_TIMEOUT"),
 		},
+		Positions: PositionsConfig{
+			CheckInterval: l.duration("POSITION_CHECK_INTERVAL"),
+			StaleAfter:    l.duration("POSITION_STALE_AFTER"),
+			Workers:       l.int("POSITION_WORKERS"),
+			QueueSize:     l.int("POSITION_QUEUE_SIZE"),
+		},
+		Push: PushConfig{
+			URL:            l.string("PUSH_HTTP_URL"),
+			RequestTimeout: l.duration("PUSH_REQUEST_TIMEOUT"),
+		},
 		LogLevel:        l.logLevel("LOG_LEVEL"),
 		ShutdownTimeout: l.duration("SHUTDOWN_TIMEOUT"),
 	}
@@ -64,6 +92,26 @@ func Load() (Config, error) {
 	}
 	if cfg.Database.QueryTimeout <= 0 {
 		l.fail(fmt.Errorf("DATABASE_QUERY_TIMEOUT must be positive"))
+	}
+	if cfg.Positions.CheckInterval <= 0 {
+		l.fail(fmt.Errorf("POSITION_CHECK_INTERVAL must be positive"))
+	}
+	if cfg.Positions.StaleAfter <= 0 {
+		l.fail(fmt.Errorf("POSITION_STALE_AFTER must be positive"))
+	}
+	if cfg.Positions.Workers <= 0 {
+		l.fail(fmt.Errorf("POSITION_WORKERS must be positive"))
+	}
+	if cfg.Positions.QueueSize <= 0 {
+		l.fail(fmt.Errorf("POSITION_QUEUE_SIZE must be positive"))
+	}
+	if cfg.Push.URL != "" {
+		if u, err := url.Parse(cfg.Push.URL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			l.fail(fmt.Errorf("PUSH_HTTP_URL must be an absolute http(s) URL, got %q", cfg.Push.URL))
+		}
+	}
+	if cfg.Push.RequestTimeout <= 0 {
+		l.fail(fmt.Errorf("PUSH_REQUEST_TIMEOUT must be positive"))
 	}
 	if cfg.ShutdownTimeout <= 0 {
 		l.fail(fmt.Errorf("SHUTDOWN_TIMEOUT must be positive"))
@@ -106,6 +154,19 @@ func (l *loader) duration(key string) time.Duration {
 		return 0
 	}
 	return d
+}
+
+func (l *loader) int(key string) int {
+	v := l.string(key)
+	if v == "" {
+		return 0
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		l.fail(fmt.Errorf("%s: invalid integer %q: %w", key, v, err))
+		return 0
+	}
+	return n
 }
 
 func (l *loader) int32(key string) int32 {
