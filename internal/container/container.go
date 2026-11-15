@@ -33,13 +33,13 @@ type Container struct {
 
 // New opens the database and builds the HTTP handler. The caller owns the
 // result and must Close it.
-func New(ctx context.Context, cfg config.Config, logger *slog.Logger, otel *telemetry.Provider) (*Container, error) {
-	metrics, err := telemetry.NewMetrics(otel.MeterProvider())
+func New(ctx context.Context, cfg config.Config, logger *slog.Logger, tel *telemetry.Provider) (*Container, error) {
+	metrics, err := telemetry.NewMetrics(tel.MeterProvider())
 	if err != nil {
 		return nil, fmt.Errorf("create metrics: %w", err)
 	}
 
-	pool, err := postgres.NewPool(ctx, cfg.Database, otel.TracerProvider(), otel.MeterProvider())
+	pool, err := postgres.NewPool(ctx, cfg.Database, tel.TracerProvider(), tel.MeterProvider())
 	if err != nil {
 		return nil, fmt.Errorf("open postgres: %w", err)
 	}
@@ -65,8 +65,8 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger, otel *tele
 		server.Deps{
 			Logger:         logger,
 			RequestTimeout: cfg.Database.QueryTimeout,
-			TracerProvider: otel.TracerProvider(),
-			Propagator:     otel.Propagator(),
+			TracerProvider: tel.TracerProvider(),
+			Propagator:     tel.Propagator(),
 			Metrics:        metrics,
 		},
 	)

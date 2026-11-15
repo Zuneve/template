@@ -17,6 +17,7 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/mock/gomock"
 
 	api "github.com/Zuneve/template/internal/generated"
 	"github.com/Zuneve/template/internal/http/middleware"
@@ -178,25 +179,6 @@ func TestLogging_AddsTraceIDsInsideSpan(t *testing.T) {
 	require.Len(t, records[0]["span_id"], 16)
 }
 
-type fakeMetrics struct {
-	started  []string
-	finished []finishedCall
-}
-
-type finishedCall struct {
-	method, route string
-	status        int
-	duration      time.Duration
-}
-
-func (f *fakeMetrics) RequestStarted(_ context.Context, method, route string) {
-	f.started = append(f.started, method+" "+route)
-}
-
-func (f *fakeMetrics) RequestFinished(_ context.Context, method, route string, status int, d time.Duration) {
-	f.finished = append(f.finished, finishedCall{method, route, status, d})
-}
-
 func TestMetrics(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -211,7 +193,12 @@ func TestMetrics(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m := &fakeMetrics{}
+			m := NewMockhttpMetrics(gomock.NewController(t))
+			m.EXPECT().RequestStarted(gomock.Any(), "GET", routeTemplate)
+			m.EXPECT().RequestFinished(gomock.Any(), "GET", routeTemplate, tt.wantStatus, gomock.Any()).
+				Do(func(_ context.Context, _, _ string, _ int, duration time.Duration) {
+					require.GreaterOrEqual(t, duration, time.Duration(0))
+				}) // exactly once: every started request is finished, otherwise active_requests leaks
 			h := middleware.Metrics(m, staticRoute(routeTemplate))(tt.next)
 
 			call := func() { h.ServeHTTP(httptest.NewRecorder(), newRequest()) }
@@ -220,14 +207,6 @@ func TestMetrics(t *testing.T) {
 			} else {
 				call()
 			}
-
-			require.Equal(t, []string{"GET " + routeTemplate}, m.started)
-			require.Len(t, m.finished, 1, "every started request is finished, otherwise active_requests leaks")
-			got := m.finished[0]
-			require.Equal(t, "GET", got.method)
-			require.Equal(t, routeTemplate, got.route)
-			require.Equal(t, tt.wantStatus, got.status)
-			require.GreaterOrEqual(t, got.duration, time.Duration(0))
 		})
 	}
 }
@@ -343,7 +322,9 @@ func TestObservabilityMiddlewares_KeepResponseControllerWorking(t *testing.T) {
 }
 
 func TestStatusRecorder_IsSharedAcrossMiddlewares(t *testing.T) {
-	m := &fakeMetrics{}
+	m := NewMockhttpMetrics(gomock.NewController(t))
+	m.EXPECT().RequestStarted(gomock.Any(), "GET", routeTemplate)
+	m.EXPECT().RequestFinished(gomock.Any(), "GET", routeTemplate, http.StatusTeapot, gomock.Any())
 	var buf bytes.Buffer
 	chain := middleware.Logging(telemetry.NewLogger(&buf, slog.LevelInfo), staticRoute(routeTemplate))(
 		middleware.Metrics(m, staticRoute(routeTemplate))(handlerWithStatus(http.StatusTeapot)),
@@ -351,6 +332,5 @@ func TestStatusRecorder_IsSharedAcrossMiddlewares(t *testing.T) {
 
 	chain.ServeHTTP(httptest.NewRecorder(), newRequest())
 
-	require.Equal(t, http.StatusTeapot, m.finished[0].status)
 	require.Equal(t, float64(http.StatusTeapot), logRecords(t, &buf)[0]["status"])
 }

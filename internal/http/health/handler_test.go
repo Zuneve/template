@@ -1,7 +1,6 @@
 package health_test
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -9,14 +8,11 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	api "github.com/Zuneve/template/internal/generated"
 	"github.com/Zuneve/template/internal/http/health"
 )
-
-type pinger struct{ err error }
-
-func (p pinger) Ping(context.Context) error { return p.err }
 
 func status(t *testing.T, rec *httptest.ResponseRecorder) api.HealthResponseStatus {
 	t.Helper()
@@ -27,7 +23,7 @@ func status(t *testing.T, rec *httptest.ResponseRecorder) api.HealthResponseStat
 }
 
 func TestLive_DoesNotTouchTheDatabase(t *testing.T) {
-	h := health.New(pinger{err: errors.New("db is down")})
+	h := health.New(NewMockpinger(gomock.NewController(t))) // no expectations: any Ping fails the test
 	rec := httptest.NewRecorder()
 
 	h.Live(rec, httptest.NewRequest(http.MethodGet, "/health", nil))
@@ -49,9 +45,11 @@ func TestReady(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			db := NewMockpinger(gomock.NewController(t))
+			db.EXPECT().Ping(gomock.Any()).Return(tt.pingErr)
 			rec := httptest.NewRecorder()
 
-			health.New(pinger{err: tt.pingErr}).Ready(rec, httptest.NewRequest(http.MethodGet, "/ready", nil))
+			health.New(db).Ready(rec, httptest.NewRequest(http.MethodGet, "/ready", nil))
 
 			require.Equal(t, tt.wantCode, rec.Code)
 			require.Equal(t, tt.wantStatus, status(t, rec))

@@ -106,9 +106,11 @@ internal/model              структуры для хранилища, у к�
 - `repository` знает `domain`, `model` и `infra/postgres/transaction`;
 - `container` знает всех и больше никем не используется, кроме `main`.
 
-Правила для `domain` и `usecase` закреплены в `.golangci.yml` через `depguard`:
-домен не может импортировать `net/http`, `chi`, `pgx`, `squirrel` и
-`otel`; usecase — `net/http`, `chi`, `pgx` и `squirrel`. Нарушение ломает
+Правила закреплены в `.golangci.yml` через `depguard`: домен не может
+импортировать `net/http`, `chi`, `pgx`, `squirrel`, `otel` и сгенерированный
+пакет `api` (`internal/generated`); usecase — `net/http`, `chi`, `pgx`,
+`squirrel` и `api`; пакеты `internal/http/*` — `internal/repository/*` и
+`internal/infra/*` (в тестах это не проверяется). Нарушение ломает
 `make lint`. Дополнительно можно проверить так:
 
 ```bash
