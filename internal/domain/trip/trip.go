@@ -40,13 +40,16 @@ type NewParams struct {
 	StartedAt  time.Time
 }
 
+// reasonRequired is the ValidationError reason for a missing mandatory value.
+const reasonRequired = "is required"
+
 // New validates p and returns a trip in the active status.
 func New(p NewParams) (Trip, error) {
 	if p.UserID == uuid.Nil {
-		return Trip{}, &ValidationError{Field: "user_id", Reason: "is required"}
+		return Trip{}, &ValidationError{Field: "user_id", Reason: reasonRequired}
 	}
 	if p.DriverID == uuid.Nil {
-		return Trip{}, &ValidationError{Field: "driver_id", Reason: "is required"}
+		return Trip{}, &ValidationError{Field: "driver_id", Reason: reasonRequired}
 	}
 	if !p.StartPoint.valid() {
 		return Trip{}, &ValidationError{Field: "start_point", Reason: "is out of range"}

@@ -27,3 +27,22 @@ func Trip(t domain.Trip) api.Trip {
 		FinishedAt: finishedAt,
 	}
 }
+
+func Position(p domain.Position) api.TripPosition {
+	return api.TripPosition{
+		Id:          p.ID,
+		TripId:      p.TripID,
+		Coordinates: api.Coordinates(p.Point),
+		RecordedAt:  p.RecordedAt.UTC(),
+	}
+}
+
+// Positions is never nil inside the response: an empty route must serialize as
+// [] and not as null.
+func Positions(ps []domain.Position) api.TripPositionsResponse {
+	out := make([]api.TripPosition, 0, len(ps))
+	for _, p := range ps {
+		out = append(out, Position(p))
+	}
+	return api.TripPositionsResponse{Positions: out}
+}

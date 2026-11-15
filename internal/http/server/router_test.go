@@ -26,6 +26,8 @@ type env struct {
 	create  *MockcreateTripHandler
 	get     *MockgetTripHandler
 	finish  *MockfinishTripHandler
+	save    *MocksavePositionHandler
+	list    *MocklistPositionsHandler
 	health  *MockhealthHandler
 	metrics *MockhttpMetrics
 	spans   *tracetest.SpanRecorder
@@ -41,11 +43,13 @@ func newEnv(t *testing.T) *env {
 		create:  NewMockcreateTripHandler(ctrl),
 		get:     NewMockgetTripHandler(ctrl),
 		finish:  NewMockfinishTripHandler(ctrl),
+		save:    NewMocksavePositionHandler(ctrl),
+		list:    NewMocklistPositionsHandler(ctrl),
 		health:  NewMockhealthHandler(ctrl),
 		metrics: NewMockhttpMetrics(ctrl),
 		spans:   tracetest.NewSpanRecorder(),
 	}
-	e.handler = server.NewRouter(e.create, e.get, e.finish, e.health, server.Deps{
+	e.handler = server.NewRouter(e.create, e.get, e.finish, e.save, e.list, e.health, server.Deps{
 		Logger:         slog.New(slog.DiscardHandler),
 		RequestTimeout: time.Second,
 		TracerProvider: sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(e.spans)),
@@ -91,6 +95,14 @@ func TestRouter_RoutesToHandlers(t *testing.T) {
 			e.finish.EXPECT().Handle(gomock.Any(), gomock.Any(), tripID).
 				Do(func(w http.ResponseWriter, _ *http.Request, _ api.TripId) { answer(w) })
 		}},
+		{http.MethodPost, "/api/v1/trips/" + tripID.String() + "/positions", "save", func(e *env, answer func(http.ResponseWriter)) {
+			e.save.EXPECT().Handle(gomock.Any(), gomock.Any(), tripID).
+				Do(func(w http.ResponseWriter, _ *http.Request, _ api.TripId) { answer(w) })
+		}},
+		{http.MethodGet, "/api/v1/trips/" + tripID.String() + "/positions", "list", func(e *env, answer func(http.ResponseWriter)) {
+			e.list.EXPECT().Handle(gomock.Any(), gomock.Any(), tripID).
+				Do(func(w http.ResponseWriter, _ *http.Request, _ api.TripId) { answer(w) })
+		}},
 		{http.MethodGet, "/health", "live", func(e *env, answer func(http.ResponseWriter)) {
 			e.health.EXPECT().Live(gomock.Any(), gomock.Any()).
 				Do(func(w http.ResponseWriter, _ *http.Request) { answer(w) })
@@ -128,11 +140,18 @@ func TestRouter_PassesParameters(t *testing.T) {
 	e.finish.EXPECT().Handle(gomock.Any(), gomock.Any(), tripID).
 		Do(func(w http.ResponseWriter, _ *http.Request, _ api.TripId) { noContent(w) })
 
+	e.save.EXPECT().Handle(gomock.Any(), gomock.Any(), tripID).
+		Do(func(w http.ResponseWriter, _ *http.Request, _ api.TripId) { noContent(w) })
+	e.list.EXPECT().Handle(gomock.Any(), gomock.Any(), tripID).
+		Do(func(w http.ResponseWriter, _ *http.Request, _ api.TripId) { noContent(w) })
+
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/trips", nil)
 	req.Header.Set("Idempotency-Key", key.String())
 	e.handler.ServeHTTP(httptest.NewRecorder(), req)
 	e.do(http.MethodGet, "/api/v1/trips/"+tripID.String())
 	e.do(http.MethodPost, "/api/v1/trips/"+tripID.String()+"/finish")
+	e.do(http.MethodPost, "/api/v1/trips/"+tripID.String()+"/positions")
+	e.do(http.MethodGet, "/api/v1/trips/"+tripID.String()+"/positions")
 }
 
 func TestRouter_BadParameters_AreProblemJSON(t *testing.T) {
@@ -143,6 +162,8 @@ func TestRouter_BadParameters_AreProblemJSON(t *testing.T) {
 	}{
 		{"trip id is not a uuid", http.MethodGet, "/api/v1/trips/not-a-uuid", ""},
 		{"finish with bad trip id", http.MethodPost, "/api/v1/trips/123/finish", ""},
+		{"save position with bad trip id", http.MethodPost, "/api/v1/trips/123/positions", ""},
+		{"list positions with bad trip id", http.MethodGet, "/api/v1/trips/123/positions", ""},
 		{"idempotency key is not a uuid", http.MethodPost, "/api/v1/trips", "nope"},
 	}
 
@@ -167,13 +188,13 @@ func TestRouter_BadParameters_AreProblemJSON(t *testing.T) {
 	}
 }
 
-func TestRouter_UnimplementedOperation_Is501(t *testing.T) {
+func TestRouter_PositionsRejectUnsupportedMethods(t *testing.T) {
 	e := newEnv(t)
 	e.ignoreMetrics()
 
-	rec := e.do(http.MethodPost, "/api/v1/trips/"+tripID.String()+"/positions")
+	rec := e.do(http.MethodDelete, "/api/v1/trips/"+tripID.String()+"/positions")
 
-	require.Equal(t, http.StatusNotImplemented, rec.Code)
+	require.Equal(t, http.StatusMethodNotAllowed, rec.Code)
 }
 
 func TestRouter_ObservabilityUsesRouteTemplate(t *testing.T) {

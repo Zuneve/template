@@ -9,7 +9,8 @@ import (
 )
 
 const (
-	uniqueViolation = "23505"
+	uniqueViolation     = "23505"
+	foreignKeyViolation = "23503"
 
 	// oneActiveTripPerDriverConstraint is the partial unique index (driver_id
 	// WHERE status = 'active') that enforces the one-active-trip-per-driver

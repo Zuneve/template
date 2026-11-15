@@ -15,15 +15,22 @@ import (
 )
 
 // serverInterface implements api.ServerInterface by handing every operation
-// to the handler package that owns it. Operations outside this service's
-// scope (trip positions) fall through to api.Unimplemented and answer 501.
+// to the handler package that owns it.
 type serverInterface struct {
-	api.Unimplemented
+	create        createTripHandler
+	get           getTripHandler
+	finish        finishTripHandler
+	savePosition  savePositionHandler
+	listPositions listPositionsHandler
+	health        healthHandler
+}
 
-	create createTripHandler
-	get    getTripHandler
-	finish finishTripHandler
-	health healthHandler
+func (s serverInterface) CreateTripPosition(w http.ResponseWriter, r *http.Request, tripID api.TripId) {
+	s.savePosition.Handle(w, r, tripID)
+}
+
+func (s serverInterface) ListTripPositions(w http.ResponseWriter, r *http.Request, tripID api.TripId) {
+	s.listPositions.Handle(w, r, tripID)
 }
 
 func (s serverInterface) CreateTrip(w http.ResponseWriter, r *http.Request, params api.CreateTripParams) {
@@ -67,6 +74,8 @@ func NewRouter(
 	create createTripHandler,
 	get getTripHandler,
 	finish finishTripHandler,
+	savePosition savePositionHandler,
+	listPositions listPositionsHandler,
 	health healthHandler,
 	deps Deps,
 ) http.Handler {
@@ -89,7 +98,14 @@ func NewRouter(
 	)
 
 	return api.HandlerWithOptions(
-		serverInterface{create: create, get: get, finish: finish, health: health},
+		serverInterface{
+			create:        create,
+			get:           get,
+			finish:        finish,
+			savePosition:  savePosition,
+			listPositions: listPositions,
+			health:        health,
+		},
 		api.ChiServerOptions{
 			BaseRouter: router,
 			ErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
